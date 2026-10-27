@@ -1,0 +1,21 @@
+PAQUETE GITHUB · RUTAS MEMO
+Pensamiento Matemático III · Primer Parcial
+
+VERSIÓN
+MI-FB-01b — Doble ubicación del QR de retroalimentación
+
+INCLUYE
+- Botón digital “Cuéntanos tu experiencia”.
+- QR del formulario en H4 · página 6 de 6 de la Ruta impresa.
+- QR del formulario en Reto MEMO · página 3 de 3.
+- Formulario: https://forms.gle/x6qw2EtyMAtdUXgK6
+
+ARCHIVOS
+- index.html
+- MEMO_insignia_central.png
+
+PUBLICACIÓN
+1. Sube ambos archivos a la raíz del repositorio.
+2. Conserva exactamente el nombre index.html.
+3. Conserva MEMO_insignia_central.png junto a index.html.
+4. Reemplaza la versión anterior.
