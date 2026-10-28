@@ -11131,5 +11131,297 @@ root.MEMO_TRAY_01={version:MEMO_TRAY_VERSION,registrar:trayRegistrarAcreditacion
 document.documentElement.dataset.memoTrayectoria=MEMO_TRAY_VERSION;
 })(typeof window!=='undefined'?window:globalThis);
 </script>
+
+<style id="memoPemaSyncFinal01Css">
+.memo-sync-estado{
+  margin:10px 0 0;
+  padding:7px 10px;
+  border:1px solid #dbe4e9;
+  border-radius:8px;
+  background:#f4f7fa;
+  color:#536670;
+  font-size:11.5px;
+  line-height:1.35;
+}
+.memo-sync-estado strong{color:#0F2638}
+</style>
+
+<script id="memoPemaSyncFinal01">
+(function(root){
+'use strict';
+
+/* ============================================================
+   MI-SEGUIMIENTO-PEMA-03 · Conexión GitHub → Apps Script
+   PEMA III · Segundo Parcial
+   - Grupos autorizados: 301–305
+   - ROUTE_ID: PEMA3-P2
+   - Sincronización no bloqueante con cola local
+   - Checkpoints resumidos; no registra cada clic
+   ============================================================ */
+
+const VERSION='MEMO-PEMA3-P2-SYNC-FINAL-01';
+const ENDPOINT='https://script.google.com/macros/s/AKfycby2zsEpxOFBFaqK8goIkIs8505ZGiC7lp9HlYOAzRI8T2TXmfGWsmmOQjWDWPMQxq19aQ/exec';
+const ENABLED=true;
+const ROUTE_ID_SYNC='PEMA3-P2';
+const ROUTE_VERSION_SYNC='v0.7';
+const GROUPS=new Set(['301','302','303','304','305']);
+
+const QUEUE_KEY='memoSyncQueue_PEMA3P2_final01';
+const SESSION_KEY='memoSyncSession_PEMA3P2_final01';
+const CIERRE_KEY_PREFIX='memoSyncCierre_PEMA3P2_';
+const RETO_KEY_PREFIX='memoSyncReto_PEMA3P2_';
+
+function uuid(){
+  if(root.crypto && typeof root.crypto.randomUUID==='function') return root.crypto.randomUUID();
+  return 'evt-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+}
+function studentId(){
+  return String(alumno?.studentId||'').trim();
+}
+function validStudent(){
+  const sid=studentId();
+  return /^\d{5}$/.test(sid) && GROUPS.has(sid.slice(0,3));
+}
+function sessionId(){
+  let s=sessionStorage.getItem(SESSION_KEY);
+  if(!s){
+    s=uuid();
+    sessionStorage.setItem(SESSION_KEY,s);
+  }
+  return s;
+}
+function resumen(){
+  try{
+    if(typeof root.obtenerResumenMEV_P2==='function'){
+      const r=root.obtenerResumenMEV_P2();
+      if(r) return {H1:r.H1,H2:r.H2,H3:r.H3,H4:r.H4};
+    }
+  }catch(_){}
+  const m=alumno?.modulos||{};
+  const get=k=>{
+    const x=m[k]?.resultado||{};
+    return {correctos:Number(x.aciertos||0),total:Number(x.total||0)};
+  };
+  return {H1:get('h1'),H2:get('h2'),H3:get('h3'),H4:get('h4')};
+}
+function getQueue(){
+  try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}
+  catch(_){return [];}
+}
+function saveQueue(q){
+  localStorage.setItem(QUEUE_KEY,JSON.stringify(q.slice(-160)));
+}
+function statusText(){
+  if(!ENABLED) return 'Seguimiento docente: desactivado.';
+  const n=getQueue().length;
+  return n
+    ? `Seguimiento docente: ${n} envío(s) pendiente(s) de sincronizar.`
+    : 'Seguimiento docente: sincronización al día.';
+}
+function renderStatus(){
+  let el=document.getElementById('memoSyncEstado');
+  if(!el){
+    const host=document.getElementById('resumenAlumno')||document.getElementById('estadoRutaDashboard');
+    if(!host)return;
+    el=document.createElement('div');
+    el.id='memoSyncEstado';
+    el.className='memo-sync-estado';
+    host.insertAdjacentElement('afterend',el);
+  }
+  el.innerHTML='<strong>MEMO:</strong> '+statusText();
+}
+function makeEvent(tipo_evento,extra={}){
+  return {
+    event_id:uuid(),
+    student_id:studentId(),
+    route_id:ROUTE_ID_SYNC,
+    route_version:ROUTE_VERSION_SYNC,
+    tipo_evento,
+    habilidad:extra.habilidad||'',
+    seccion:extra.seccion||'',
+    acreditado:extra.acreditado===undefined?null:extra.acreditado,
+    reto_generado:extra.reto_generado===true,
+    sesion_id:sessionId(),
+    resultados:resumen()
+  };
+}
+async function sendOne(evt){
+  const response=await fetch(ENDPOINT,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(evt),
+    redirect:'follow'
+  });
+  const data=await response.json();
+  if(!data || data.ok!==true) throw new Error(data?.error||'No se confirmó el envío.');
+  return data;
+}
+async function flush(){
+  if(!ENABLED || !validStudent() || !/^https?:\/\//.test(ENDPOINT)){
+    renderStatus();
+    return;
+  }
+  const q=getQueue();
+  if(!q.length){renderStatus();return;}
+
+  const remaining=[];
+  for(let i=0;i<q.length;i++){
+    try{await sendOne(q[i]);}
+    catch(_){
+      remaining.push(...q.slice(i));
+      break;
+    }
+  }
+  saveQueue(remaining);
+  renderStatus();
+}
+function checkpoint(tipo,extra={}){
+  if(!validStudent())return;
+  const q=getQueue();
+  q.push(makeEvent(tipo,extra));
+  saveQueue(q);
+  renderStatus();
+  if(ENABLED) flush();
+}
+function wrap(name,after){
+  const prev=root[name];
+  if(typeof prev!=='function')return;
+  root[name]=function(){
+    const args=[...arguments];
+    const ret=prev.apply(this,args);
+    try{after(args,ret);}catch(e){console.warn('MEMO seguimiento:',name,e);}
+    return ret;
+  };
+}
+
+/* ------------------------------------------------------------
+   Validación local de población
+   ------------------------------------------------------------ */
+const registrarBase=root.registrarAlumno;
+if(typeof registrarBase==='function'){
+  root.registrarAlumno=function(){
+    const sid=String(document.getElementById('studentId')?.value||'').replace(/\D/g,'');
+    if(!/^\d{5}$/.test(sid)){
+      alert('Captura un ID STUDENT válido de 5 dígitos.');
+      return;
+    }
+    if(!GROUPS.has(sid.slice(0,3))){
+      alert('Esta Ruta de Pensamiento Matemático III está autorizada únicamente para los grupos 301, 302, 303, 304 y 305.');
+      return;
+    }
+    const anterior=alumno?.studentId||'';
+    const ret=registrarBase.apply(this,arguments);
+    if(alumno?.studentId && alumno.studentId!==anterior){
+      checkpoint('INICIO_RUTA',{seccion:'Registro e inicio'});
+    }
+    return ret;
+  };
+}
+
+/* Diagnóstico */
+wrap('finalizar',()=>{
+  checkpoint('FIN_DIAGNOSTICO',{seccion:'Diagnóstico selectivo H1-H4'});
+});
+
+/* Fin de bloque: toma el número antes de que el motor lo incremente. */
+[
+ ['H1','cerrarBloqueH1','practicaH1'],
+ ['H2','cerrarBloqueH2','practicaH2'],
+ ['H3','cerrarBloqueH3','practicaH3'],
+ ['H4','cerrarBloqueH4','practicaH4']
+].forEach(([h,fn,pkey])=>{
+  const prev=root[fn];
+  if(typeof prev!=='function')return;
+  root[fn]=function(){
+    const bloque=Number(alumno?.[pkey]?.bloqueNumero||0);
+    const ret=prev.apply(this,arguments);
+    checkpoint('FIN_BLOQUE',{
+      habilidad:h,
+      seccion:`${h} · Bloque ${bloque||'—'}`
+    });
+    return ret;
+  };
+});
+
+/* Cierre de módulo. Como H1–H4 son independientes, CIERRE_RUTA se
+   detecta después de acreditar CUALQUIER módulo, no solo H4. */
+[
+ ['H1','finalizarPracticaH1'],
+ ['H2','finalizarPracticaH2'],
+ ['H3','finalizarPracticaH3'],
+ ['H4','finalizarPracticaH4']
+].forEach(([h,fn])=>{
+  const prev=root[fn];
+  if(typeof prev!=='function')return;
+  root[fn]=function(consolidado){
+    const ret=prev.apply(this,arguments);
+
+    checkpoint(
+      consolidado===true?'ACREDITA_H':'CIERRE_H',
+      {habilidad:h,seccion:`${h} · cierre de módulo`,acreditado:consolidado===true}
+    );
+
+    if(consolidado===true && alumno?.rutaCompletada===true){
+      const key=CIERRE_KEY_PREFIX+studentId();
+      if(localStorage.getItem(key)!=='1'){
+        localStorage.setItem(key,'1');
+        checkpoint('CIERRE_RUTA',{seccion:'H1-H4 acreditadas'});
+      }
+    }
+    return ret;
+  };
+});
+
+/* Reto MEMO: registrar solo la primera generación/apertura posterior al cierre. */
+const retoBase=root.abrirRetoLobo;
+if(typeof retoBase==='function'){
+  root.abrirRetoLobo=function(){
+    const sid=studentId();
+    const key=RETO_KEY_PREFIX+sid;
+    const yaRegistrado=localStorage.getItem(key)==='1';
+    const ret=retoBase.apply(this,arguments);
+    if(alumno?.rutaCompletada===true && !yaRegistrado){
+      localStorage.setItem(key,'1');
+      checkpoint('RETO_GENERADO',{seccion:'Reto MEMO final',reto_generado:true});
+    }
+    return ret;
+  };
+}
+
+/* Dashboard: mostrar estado de sincronización y reintentar cola. */
+if(typeof root.actualizarDashboard==='function'){
+  const prev=root.actualizarDashboard;
+  root.actualizarDashboard=function(){
+    const ret=prev.apply(this,arguments);
+    renderStatus();
+    if(ENABLED)flush();
+    return ret;
+  };
+}
+
+root.addEventListener('online',()=>flush());
+root.addEventListener('load',()=>{
+  setTimeout(()=>{
+    renderStatus();
+    if(ENABLED)flush();
+  },0);
+});
+
+root.MEMO_PEMA_SYNC_FINAL_01={
+  version:VERSION,
+  endpoint:ENDPOINT,
+  routeId:ROUTE_ID_SYNC,
+  routeVersion:ROUTE_VERSION_SYNC,
+  checkpoint,
+  flush,
+  resumen,
+  getQueue,
+  validStudent
+};
+document.documentElement.dataset.memoPemaSync=VERSION;
+
+})(typeof window!=='undefined'?window:globalThis);
+</script>
+
 </body>
 </html>
